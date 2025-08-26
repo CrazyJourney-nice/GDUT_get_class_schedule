@@ -15,17 +15,22 @@ print("="*30)
 print("该工具会自动爬取你的课程表，并生成一份可以将课程表导入手机日历的.ics文件。")
 print("\n使用方法:")
 print("1. 登录广东工业大学教务系统（jxfw.gdut.edu.cn）。")
-print("2. 打开浏览器的开发者工具（F12），切换到“网络(Network)”标签。")
-print("3. 点击“课表查询”。")
-print("4. 找到名为“sgrkbcx!getKbRq.action?xnxqdm”的请求，并在Headers标签中的Request Headers栏找到“Cookie”（注意，一定不能泄露cookie给其他任何人）。")
-print("5. 复制整个Cookie字符串。")
-print("6. 将复制的内容粘贴到本程序中，并按提示输入你的Cookie。")
+print("2. 在教务系统中找到您想查询的学期代码。例如，2025年秋季学期的代码是 '202501'。")
+print("3. 打开浏览器的开发者工具（F12），切换到“网络(Network)”标签。")
+print("4. 找到任意一个发送到“jxfw.gdut.edu.cn”的请求。")
+print("5. 在Headers标签中的Request Headers栏找到并复制整个Cookie字符串。")
+print("6. 将学期代码和Cookie粘贴到本程序中。")
 print("\n注意事项:")
-print("1. 请确保你已经登录教务系统，并且课程表数据已加载。")
-print("2. 如果课程表数据未加载，请尝试刷新页面或检查网络连接。")
-print("3. 程序运行成功后会生成名为“my_schedule”的.ics文件，并存储在与.exe文件同一目录下。")
-print("\n请确保你已经登录广东工业大学教务系统，并且课程表数据已加载。")
+print("1. 请确保你已经登录教务系统。")
+print("2. 程序运行成功后会生成名为“my_schedule”的.ics文件，并存储在与.exe文件同一目录下。")
+print("\n请确保你已经登录广东工业大学教务系统。")
 print("="*30)
+
+ACADEMIC_SEMESTER_CODE = input("请输入学期代码（如2025秋季：202501；2026春季：202502）: ")
+if not ACADEMIC_SEMESTER_CODE.strip():
+    print("\nERROR: 学期代码不能为空! 请重新运行程序并输入有效的学期代码。")
+    time.sleep(3)
+    sys.exit()
 
 YOUR_COOKIE = input("\n输入你复制的cookie(按“回车键”继续):\n>") # Adding your cookie here
 if not YOUR_COOKIE.strip():
@@ -33,7 +38,6 @@ if not YOUR_COOKIE.strip():
     time.sleep(3)
     sys.exit()
 
-ACADEMIC_SEMESTER_CODE = "202402" # enter the semester that you want to get
 ENTIRE_SEMESTER_WEEKS  = 20
 
 # !!! DO NOT CHANGE ANY CODES BELOW !!!
