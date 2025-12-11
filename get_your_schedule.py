@@ -1,48 +1,28 @@
 """
-a program automatically scrape your class schedule of semester and output with a .ics file whcih can be added into you phone's calendar 
+A program to automatically scrape your class schedule of semester and output with a .ics file 
+which can be added into your phone's calendar.
 """
 
 import html
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import json
 import time
 import sys
-from datetime import datetime, timedelta, timezone 
+import concurrent.futures
+from typing import Tuple, Optional, Dict, List, Any
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from ics import Calendar, Event
 
-print("获取GDUT课程表")
-print("="*30)
-print("该工具会自动爬取你的课程表，并生成一份可以将课程表导入手机日历的.ics文件。")
-print("\n使用方法:")
-print("1. 登录广东工业大学教务系统（jxfw.gdut.edu.cn）。")
-print("2. 在教务系统中找到您想查询的学期代码。例如，2025年秋季学期的代码是 '202501'。")
-print("3. 打开浏览器的开发者工具（F12），切换到“网络(Network)”标签。")
-print("4. 找到任意一个发送到“jxfw.gdut.edu.cn”的请求。")
-print("5. 在Headers标签中的Request Headers栏找到并复制整个Cookie字符串。")
-print("6. 将学期代码和Cookie粘贴到本程序中。")
-print("\n注意事项:")
-print("1. 请确保你已经登录教务系统。")
-print("2. 程序运行成功后会生成名为“my_schedule”的.ics文件，并存储在与.exe文件同一目录下。")
-print("\n请确保你已经登录广东工业大学教务系统。")
-print("="*30)
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
+from rich.theme import Theme
 
-ACADEMIC_SEMESTER_CODE = input("请输入学期代码（如2025秋季：202501；2026春季：202502）: ")
-if not ACADEMIC_SEMESTER_CODE.strip():
-    print("\nERROR: 学期代码不能为空! 请重新运行程序并输入有效的学期代码。")
-    time.sleep(3)
-    sys.exit()
-
-YOUR_COOKIE = input("\n输入你复制的cookie(按“回车键”继续):\n>") # Adding your cookie here
-if not YOUR_COOKIE.strip():
-    print("\nERROR: Cookie不能为空! 请重新运行程序并输入有效的Cookie。")
-    time.sleep(3)
-    sys.exit()
-
-ENTIRE_SEMESTER_WEEKS  = 20
-
-# !!! DO NOT CHANGE ANY CODES BELOW !!!
-
-# 
+# Constants
+ENTIRE_SEMESTER_WEEKS = 20
 CLASS_TIMES = {
     '01': ('08:30', '09:15'), '02': ('09:20', '10:05'),
     '03': ('10:25', '11:10'), '04': ('11:15', '12:00'),
@@ -51,113 +31,223 @@ CLASS_TIMES = {
     '09': ('17:20', '18:05'), '10': ('18:30', '19:15'),
     '11': ('19:20', '20:05'), '12': ('20:10', '20:55'),
 }
+CST_TZ = ZoneInfo("Asia/Shanghai")
 
+# Initialize Rich Console
+console = Console(theme=Theme({
+    "info": "dim cyan",
+    "warning": "yellow",
+    "danger": "bold red",
+    "success": "bold green",
+    "highlight": "bold cyan"
+}))
 
-headers = {
-    'Cookie': YOUR_COOKIE,
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-}
+def print_welcome_message() -> None:
+    welcome_text = """
+该工具会自动爬取你的课程表，并生成一份可以将课程表导入手机日历的 .ics 文件。
 
-c = Calendar()
-cst_tz = timezone(timedelta(hours=8))
+[highlight]使用方法:[/highlight]
+1. 登录广东工业大学教务系统 ([link]jxfw.gdut.edu.cn[/link])。
+2. 找到您想查询的[bold]学期代码[/bold] (例如: 2025年秋季 -> '202501'; 2026年春季 -> '202602')。
+3. 打开开发者工具 (F12) -> 网络 (Network) 标签。
+4. 刷新页面，找到任意发送到 [italic]jxfw.gdut.edu.cn[/italic] 的请求。
+5. 在 Headers -> Request Headers 中复制完整的 [bold]Cookie[/bold] 字符串（JSESSIONID=......）。
+6. 将完整的 Cookie 粘贴到本程序中。
 
-print("Attempting to fetch your class schedule...")
+[highlight]注意事项:[/highlight]
+• 确保已登录教务系统。
+• 成功后会生成 [bold]my_schedule.ics[/bold] 文件。
+    """
+    console.print(Panel(
+        welcome_text.strip(),
+        title="[bold blue]GDUT Class Schedule Fetcher[/bold blue]",
+        subtitle="Created by @ycj",
+        border_style="blue",
+        expand=False
+    ))
+    console.print()
 
+def get_user_input() -> Tuple[str, str]:
+    max_retries = 3
+    semester_code = ""
+    
+    for attempt in range(max_retries):
+        semester_code = console.input("[bold]请输入学期代码[/bold] (如2025秋季：202501; 2026春季：202602): ").strip()
+        
+        if not semester_code:
+            console.print("[danger]ERROR: 学期代码不能为空![/danger]")
+        elif not semester_code.endswith(('01', '02')):
+            console.print("[danger]ERROR: 学期代码格式不正确![/danger] 代码必须以 '01' (秋季) 或 '02' (春季) 结尾。")
+        else:
+            break # Valid input
+        
+        if attempt < max_retries - 1:
+            console.print(f"[warning]请重新输入 (剩余尝试次数: {max_retries - 1 - attempt}).[/warning]\n")
+        else:
+            console.print("\n[danger]错误次数过多，程序即将退出。[/danger]")
+            time.sleep(3)
+            sys.exit(1)
 
-for week in range(1, ENTIRE_SEMESTER_WEEKS + 1):
-    API_URL = f"https://jxfw.gdut.edu.cn/xsgrkbcx!getKbRq.action?xnxqdm={ACADEMIC_SEMESTER_CODE}&zc={week}"
-    REFERER_URL = f"https://jxfw.gdut.edu.cn/xsgrkbcx!getKbRq.action?xnxqdm={ACADEMIC_SEMESTER_CODE}&zc={week}"
-    headers['Referer'] = REFERER_URL
+    cookie = ""
+    for attempt in range(max_retries):
+        cookie = console.input("\n[bold]输入 Cookie[/bold] (以 'JSESSIONID=' 开头, 按回车继续):\n> ").strip()
+        
+        if not cookie:
+            console.print("[danger]ERROR: Cookie不能为空![/danger]")
+        elif not cookie.startswith("JSESSIONID="):
+            console.print("[danger]ERROR: Cookie 格式不正确![/danger] 必须以 'JSESSIONID=' 开头。")
+            console.print("请检查是否复制了正确的 Cookie 值 (不包含 'Cookie: ' 前缀)。")
+        else:
+            break # Valid input
 
-    print("-----------------------------------------------------------------")
-    print(f"Fetching data for week {week}...")
+        if attempt < max_retries - 1:
+            console.print(f"[warning]请重新输入 (剩余尝试次数: {max_retries - 1 - attempt}).[/warning]")
+        else:
+            console.print("\n[danger]错误次数过多，程序即将退出。[/danger]")
+            time.sleep(3)
+            sys.exit(1)
+        
+    return semester_code, cookie
 
+def fetch_week_data(session: requests.Session, semester_code: str, week: int) -> Optional[requests.Response]:
+    """Fetches data for a specific week using the provided session."""
+    url = f"https://jxfw.gdut.edu.cn/xsgrkbcx!getKbRq.action?xnxqdm={semester_code}&zc={week}"
+    
+    # We pass the Referer in a new dict so we don't modify the global session headers
+    # which would be unsafe in a threaded environment.
+    request_headers = {'Referer': url}
+    
+    try:
+        response = session.get(url, headers=request_headers, timeout=10)
+        return response
+    except requests.exceptions.RequestException as e:
+        return None
+
+def process_week_data(calendar: Calendar, response: requests.Response, week: int) -> None:
+    """Parses the response and adds events to the calendar."""
+    if response.status_code != 200:
+        console.print(f"[danger]Week {week} Error:[/danger] Status Code {response.status_code}")
+        return
+
+    if not response.text or not response.text.strip().startswith('['):
+        # console.print(f"[warning]Week {week}: No data found or empty.[/warning]")
+        return
 
     try:
-        response = requests.get(API_URL, headers=headers) 
+        data = response.json()
+        class_schedule = data[0]
+        week_dates = data[1]
+        date_map = {day['xqmc']: day['rq'] for day in week_dates}
 
-        if response.status_code == 200:
-            if not response.text or not response.text.strip().startswith('['):
-                print(f"No class schedule data found for week {week}. It might be a")
-                time.sleep(1)
-                continue
-            print("Successfully connected and received data!\n")
-        
-            try:
-                data = response.json()
-                class_schedule = data[0]
-                week_dates = data[1]
-
-                date_map = {day['xqmc']: day['rq'] for day in week_dates}
-
+        for course in class_schedule:
+            add_course_to_calendar(calendar, course, date_map)
             
-                
+    except (json.JSONDecodeError, IndexError, TypeError) as e:
+        console.print(f"[danger]Week {week} Parse Error:[/danger] {e}")
 
-                print(f"Found {len(class_schedule)} classes in your schedule for the {week}:\n")
-                print("-----------------------------------------------------------------")
+def add_course_to_calendar(calendar, course, date_map):
+    """Helper to create an Event object and add it to the calendar."""
+    course_name = course.get('kcmc', 'N/A').strip()
+    teacher = course.get('teaxms', 'N/A').strip()
+    location = course.get('jxcdmc', 'Online/TBD')
+    day_of_week = course.get('xq', '?')
+    periods = course.get('jcdm', '')
 
-                for course in class_schedule:
-                    course_name = course.get('kcmc', 'N/A').strip()
-                    teacher = course.get('teaxms', 'N/A').strip()
-                    location = course.get('jxcdmc', 'Online/TBD')
-                    day_of_week = course.get('xq', '?')
-                    time_slots = course.get('jcdm', 'N/A')
+    if day_of_week and day_of_week in date_map:
+        event_date_str = date_map[day_of_week]
 
+        if periods and len(periods) >= 2:
+            start_period, end_period = periods[:2], periods[-2:]
 
-                    if day_of_week and day_of_week in date_map:
-                        event_date_str = date_map[day_of_week]
-                        periods = course.get('jcdm', '')
+            if start_period in CLASS_TIMES and end_period in CLASS_TIMES:
+                start_time_str = CLASS_TIMES[start_period][0]
+                end_time_str = CLASS_TIMES[end_period][1]
 
-                        if periods and len(periods) >= 2:
-                            start_period, end_period = periods[:2], periods[-2:]
+                start_datetime = datetime.fromisoformat(f"{event_date_str} {start_time_str}:00").replace(tzinfo=CST_TZ)
+                end_datetime = datetime.fromisoformat(f"{event_date_str} {end_time_str}:00").replace(tzinfo=CST_TZ)
 
-                            if start_period in CLASS_TIMES and end_period in CLASS_TIMES:
-                                start_time_str = CLASS_TIMES[start_period][0]
-                                end_time_str = CLASS_TIMES[end_period][1]
+                e = Event()
+                e.name = html.unescape(course_name)
+                e.begin = start_datetime
+                e.end = end_datetime
+                e.location = location
+                e.description = f"Teacher: {teacher}\nRemarks: {course.get('sknrjj', '')}"
+            
+                calendar.events.add(e)
 
-                                
+def save_calendar(calendar: Calendar, filename: str = 'my_schedule.ics') -> None:
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.writelines(calendar.serialize_iter())
+        
+        console.print(Panel(
+            f"Your schedule has been saved to [bold green]'{filename}'[/bold green]\n"
+            "You can now send this file to your phone and import it into your calendar.",
+            title="[success]SUCCESS[/success]",
+            border_style="green"
+        ))
+    except Exception as e:
+        console.print(f"\n[danger]An error occurred while writing the file: {e}[/danger]")
 
-                                start_datetime = datetime.fromisoformat(f"{event_date_str} {start_time_str}:00").replace(tzinfo=cst_tz)
-                                end_datetime = datetime.fromisoformat(f"{event_date_str} {end_time_str}:00").replace(tzinfo=cst_tz)
-
-                                e = Event()
-                                e.name = html.unescape(course_name)
-                                e.begin = start_datetime
-                                e.end = end_datetime
-                                e.location = location
-                                e.description = f"Teacher: {teacher}\nRemarks: {course.get('sknrjj', '')}"
-                            
-                                c.events.add(e)
-                    
-                
-            except (json.JSONDecodeError, IndexError, TypeError) as e:
-                print(f"Error processing the data: {e}")
-                print("Response:", response.text if 'response' in locals() else 'No response object')
-
-        else:
-            print(f"Error: Failed to fetch data. Status Code: {response.status_code}")
-            print("Response Text:", response.text)
-
-    except requests.exceptions.RequestException as e:
-        print(f"A network error occurred for week {week}: {e}")
-
-        time.sleep(5)
-
-    time.sleep(1)
-
-
-try:
-    with open('my_schedule.ics', 'w', encoding='utf-8') as f:
-        f.writelines(c.serialize_iter())
+def main() -> None:
+    print_welcome_message()
+    semester_code, cookie = get_user_input()
     
-    print("-----------------------------------------------------------------")
-    print("\nSUCCESS! Your schedule has been saved to 'my_schedule.ics'")
-    print("You can now send this file to your iPhone and import it into your calendar.")
+    headers = {
+        'Cookie': cookie,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    }
 
-except Exception as e:
-    print(f"\nAn error occurred while writing the file: {e}")
+    session = requests.Session()
+    session.headers.update(headers)
+    
+    # Configure retry strategy
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=0.3,
+        status_forcelist=[500, 502, 503, 504],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    
+    calendar = Calendar()
+    console.print("\n[info]Attempting to fetch your class schedule...[/info]\n")
 
+    # Use ThreadPoolExecutor with Rich Progress
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeRemainingColumn(),
+        console=console
+    ) as progress:
+        
+        task_id = progress.add_task("[cyan]Fetching schedule...", total=ENTIRE_SEMESTER_WEEKS)
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_week = {
+                executor.submit(fetch_week_data, session, semester_code, week): week 
+                for week in range(1, ENTIRE_SEMESTER_WEEKS + 1)
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_week):
+                week = future_to_week[future]
+                try:
+                    response = future.result()
+                    if response:
+                        process_week_data(calendar, response, week)
+                except Exception as exc:
+                    console.print(f"[danger]Week {week} Exception: {exc}[/danger]")
+                finally:
+                    progress.update(task_id, advance=1)
 
-print("\n已成功运行， 该程序会在10s后自动退出。")
-time.sleep(10)
-# created by @ycj with love
+    save_calendar(calendar)
+
+    console.print("\n[dim]程序会在10s后自动退出...[/dim]")
+    time.sleep(10)
+
+if __name__ == "__main__":
+    main()
+# created by @ycj with love and passion

@@ -15,11 +15,11 @@
         *   例如: 2025年秋季学期的代码是 `202501`；2026年春季学期的代码是 `202502`。
     *   接着，程序会要求您输入 **Cookie**。
         *   登录 [广东工业大学教务系统](https://jxfw.gdut.edu.cn/login!welcome.action)。
-        *   打开浏览器的**开发者工具** (按键盘上的 F12)。
+        *   打开浏览器的**开发者工具** 。
         *   切换到**网络(Network)**标签。
         *   刷新页面并点击“课表查询”，找到以**xsgrkbcx!getKbRq.action?xnxqdm=**为开头的请求，并双击它
         *   在 **Headers** 标签页下的 **Request Headers** 部分找到 **Cookie**。
-        *   复制完整的 Cookie 字符串并粘贴到程序中。
+        *   复制完整的 Cookie (JSESSIONID=......)字符串并粘贴到程序中。
 
 4.  **获取课表文件**:
     *   程序运行成功后，会在与 `.exe` 文件相同的目录下生成一个名为 `my_schedule.ics` 的文件。
