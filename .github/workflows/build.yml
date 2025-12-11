@@ -1,0 +1,75 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller get_your_schedule.spec
+
+      - name: Rename Output (Windows)
+        if: runner.os == 'Windows'
+        run: mv dist/get_your_schedule.exe dist/get_your_schedule_windows.exe
+
+      - name: Rename Output (Linux)
+        if: runner.os == 'Linux'
+        run: mv dist/get_your_schedule dist/get_your_schedule_linux
+
+      - name: Rename Output (macOS)
+        if: runner.os == 'macOS'
+        run: mv dist/get_your_schedule dist/get_your_schedule_macos
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: get-class-schedule-${{ runner.os }}
+          path: dist/get_your_schedule_*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*
+          generate_release_notes: true

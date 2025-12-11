@@ -3,7 +3,7 @@ name = "get-class-schedule"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "datetime>=6.0",
     "ics>=0.7.2",
@@ -11,4 +11,9 @@ dependencies = [
     "python-dateutil>=2.9.0.post0",
     "requests>=2.32.4",
     "rich>=14.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.8",
 ]
