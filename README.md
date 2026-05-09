@@ -12,16 +12,7 @@
 *   **跨平台**: 提供 Windows, macOS 和 Linux 的独立可执行文件。
 *   **稳定可靠**: 内置重试机制和智能错误处理。
 
-## 📥 下载与安装
-
-### 方式一：直接下载 (推荐)
-前往本仓库的 [Releases 页面](../../releases) 下载对应系统的可执行文件：
-*   **Windows**: `get_your_schedule_windows.exe`
-*   **macOS**: `get_your_schedule_macos`
-*   **Linux**: `get_your_schedule_linux`
-
-### 方式二：源码运行
-如果你熟悉 Python，也可以直接运行源码：
+## 📥 使用方法
 
 1.  克隆仓库:
     ```bash
@@ -34,7 +25,7 @@
     ```
 3.  运行:
     ```bash
-    uv run python get_your_schedule.py
+    python get_your_scheduleOriginal.py
     ```
 
 ## 🚀 使用指南
