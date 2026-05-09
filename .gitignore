@@ -1,0 +1,31 @@
+# macOS system files
+.DS_Store
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Linter caches
+.ruff_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# User generated files (schedules)
+*.ics
+my_schedule.ics
+
+# Environment variables (secrets)
+.env
+.env.*
+
+# Explicitly excluded by user
+@get_your_scheduleAppleCalendarURL.py
