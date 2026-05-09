@@ -29,3 +29,8 @@ my_schedule.ics
 
 # Explicitly excluded by user
 @get_your_scheduleAppleCalendarURL.py
+.github/workflows/build.yml
+get_your_scheduleAppleCalendarURL.py
+.github/workflows/build.yml
+/.github/workflows
+/.github
